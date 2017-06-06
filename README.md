@@ -1,0 +1,2 @@
+# histogram
+Simple histogram library
