@@ -4,7 +4,7 @@
  *
  * https://github.com/greensky00
  *
- * Last modification: June 4, 2017.
+ * Version: 0.1.11
  *
  * Permission is hereby granted, free of charge, to any person
  * obtaining a copy of this software and associated documentation
@@ -45,7 +45,8 @@
 #define _CLM_B_GREEN   "\033[1;32m"
 #define _CLM_RED       "\033[31m"
 #define _CLM_B_RED     "\033[1;31m"
-#define _CLM_BLUE      "\033[34m"
+#define _CLM_BROWN     "\033[33m"
+#define _CLM_BLUE      "\033[34m"
 #define _CLM_B_BLUE    "\033[1;34m"
 #define _CLM_MAGENTA   "\033[35m"
 #define _CLM_B_MAGENTA "\033[1;35m"
@@ -55,6 +56,7 @@
 #define _CL_GREEN(str)     _CLM_GREEN   str _CLM_END
 #define _CL_RED(str)       _CLM_RED     str _CLM_END
 #define _CL_MAGENTA(str)   _CLM_MAGENTA str _CLM_END
+#define _CL_BROWN(str)     _CLM_BROWN   str _CLM_END
 #define _CL_B_MAGENTA(str) _CLM_MAGENTA str _CLM_END
 #define _CL_CYAN(str)      _CLM_CYAN    str _CLM_END
 
@@ -323,14 +325,17 @@ public:
 private:
     inline bool matchFilter(std::string test_name);
 
-    inline void printTestReady(std::string& test_name);
-    inline void printTestResult(std::string& test_name,
-                                int result,
-                                double elased_time);
+    inline void readyTest(std::string& test_name);
+    inline void reportTestResult(std::string& test_name,
+                                 int result);
 
     size_t cntPass;
     size_t cntFail;
     std::string filter;
+    // Start time of each test.
+    std::chrono::time_point<std::chrono::system_clock> startTimeLocal;
+    // Start time of the entire test suite.
+    std::chrono::time_point<std::chrono::system_clock> startTimeGlobal;
 };
 
 
@@ -471,11 +476,15 @@ void TestArgsBase::testAllInternal(size_t depth) {
 
 // ===== TestSuite =====
 
-TestSuite::TestSuite() : cntPass(0), cntFail(0) {}
+TestSuite::TestSuite()
+    : cntPass(0),
+      cntFail(0),
+      startTimeGlobal(std::chrono::system_clock::now()) {}
 
 TestSuite::TestSuite(int argc, char **argv)
     : cntPass(0),
-      cntFail(0) {
+      cntFail(0),
+      startTimeGlobal(std::chrono::system_clock::now()) {
     if (argc >= 2) {
         filter = argv[1];
     }
@@ -503,11 +512,17 @@ static std::string usToString(uint64_t us) {
 }
 
 TestSuite::~TestSuite() {
+    std::chrono::time_point<std::chrono::system_clock> cur_time =
+            std::chrono::system_clock::now();;
+    std::chrono::duration<double> elapsed = cur_time - startTimeGlobal;
+    std::string time_str = usToString(elapsed.count() * 1000000);
+
     printf(_CL_GREEN("%zu") " tests passed", cntPass);
     if (cntFail) {
         printf(", " _CL_RED("%zu") " tests failed", cntFail);
     }
-    printf(" out of " _CL_CYAN("%zu") "\n", cntPass+cntFail);
+    printf(" out of " _CL_CYAN("%zu") " (" _CL_BROWN("%s") ")\n",
+           cntPass+cntFail, time_str.c_str());
 }
 
 std::string TestSuite::getTestFileName(std::string prefix) {
@@ -527,18 +542,22 @@ void TestSuite::clearTestFile(std::string prefix) {
     r = system(command.c_str());
 }
 
-void TestSuite::printTestReady(std::string& test_name) {
+void TestSuite::readyTest(std::string& test_name) {
     printf("[ " "...." " ] %s\n", test_name.c_str());
     fflush(stdout);
+
+    startTimeLocal = std::chrono::system_clock::now();
 }
 
-void TestSuite::printTestResult(std::string& test_name,
-                                int result,
-                                double elapsed_time) {
-    std::string time_str = usToString(elapsed_time * 1000000);
+void TestSuite::reportTestResult(std::string& test_name,
+                                int result) {
+    std::chrono::time_point<std::chrono::system_clock> cur_time =
+            std::chrono::system_clock::now();;
+    std::chrono::duration<double> elapsed = cur_time - startTimeLocal;
+    std::string time_str = usToString(elapsed.count() * 1000000);
 
     if (result < 0) {
-        printf("[ " _CL_RED("FAIL") " ] %s, %s\n",
+        printf("[ " _CL_RED("FAIL") " ] %s (" _CL_BROWN("%s") ")\n",
                test_name.c_str(),
                time_str.c_str());
         cntFail++;
@@ -548,7 +567,7 @@ void TestSuite::printTestResult(std::string& test_name,
         // Clear current line
         printf("\r");
         // Overwrite
-        printf("[ " _CL_GREEN("PASS") " ] %s, %s\n",
+        printf("[ " _CL_GREEN("PASS") " ] %s (" _CL_BROWN("%s") ")\n",
                test_name.c_str(),
                time_str.c_str());
         cntPass++;
@@ -569,13 +588,9 @@ void TestSuite::doTest(std::string test_name,
 {
     if (!matchFilter(test_name)) return;
 
-    printTestReady(test_name);
-    std::chrono::time_point<std::chrono::system_clock> start, end;
-    start = std::chrono::system_clock::now();
+    readyTest(test_name);
     int ret = func();
-    end = std::chrono::system_clock::now();
-    std::chrono::duration<double> elapsed = end - start;
-    printTestResult(test_name, ret, elapsed.count());
+    reportTestResult(test_name, ret);
 }
 
 void TestSuite::doTest(std::string test_name,
@@ -591,13 +606,9 @@ void TestSuite::doTest(std::string test_name,
 void TestSuite::doTestCB(std::string test_name,
                          test_func_args func,
                          TestArgsBase* args) {
-    printTestReady(test_name);
-    std::chrono::time_point<std::chrono::system_clock> start, end;
-    start = std::chrono::system_clock::now();
+    readyTest(test_name);
     int ret = func(args);
-    end = std::chrono::system_clock::now();
-    std::chrono::duration<double> elapsed = end - start;
-    printTestResult(test_name, ret, elapsed.count());
+    reportTestResult(test_name, ret);
 }
 
 template<typename T, typename F>
@@ -616,13 +627,9 @@ void TestSuite::doTest(std::string test_name,
         ss << cur_arg;
         actual_test_name += " (" + ss.str() + ")";
 
-        printTestReady(actual_test_name);
-        std::chrono::time_point<std::chrono::system_clock> start, end;
-        start = std::chrono::system_clock::now();
+        readyTest(actual_test_name);
         int ret = func(range.getEntry(i));
-        end = std::chrono::system_clock::now();
-        std::chrono::duration<double> elapsed = end - start;
-        printTestResult(actual_test_name, ret, elapsed.count());
+        reportTestResult(actual_test_name, ret);
     }
 }
 
