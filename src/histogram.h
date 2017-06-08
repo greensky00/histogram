@@ -4,7 +4,8 @@
  *
  * https://github.com/greensky00
  *
- * Last modification: June 5, 2017.
+ * Histogram
+ * Version: 0.1.2
  *
  * Permission is hereby granted, free of charge, to any person
  * obtaining a copy of this software and associated documentation
@@ -137,8 +138,48 @@ public:
         }
     }
 
+    Histogram(const Histogram& src) {
+        count = src.getTotal();
+        sum = src.getSum();
+        max = src.getMax();
+        for (size_t i=0; i<maxBins; ++i) {
+            bins[i] += src.bins[i];
+        }
+    }
+
     ~Histogram() {
         delete[] bins;
+    }
+
+    // this += rhs
+    Histogram& operator+=(const Histogram& rhs) {
+        count += rhs.getTotal();
+        sum += rhs.getSum();
+        if (max < rhs.getMax()) {
+            max = rhs.getMax();
+        }
+
+        for (size_t i=0; i<maxBins; ++i) {
+            bins[i] += rhs.bins[i];
+        }
+
+        return *this;
+    }
+
+    // returning lhs + rhs
+    friend Histogram operator+(Histogram lhs,
+                               const Histogram& rhs) {
+        lhs.count += rhs.getTotal();
+        lhs.sum += rhs.getSum();
+        if (lhs.max < rhs.getMax()) {
+            lhs.max = rhs.getMax();
+        }
+
+        for (size_t i=0; i<maxBins; ++i) {
+            lhs.bins[i] += rhs.bins[i];
+        }
+
+        return lhs;
     }
 
     void add(uint64_t val) {
@@ -159,9 +200,8 @@ public:
     }
 
     uint64_t getTotal() const { return count; }
-
+    uint64_t getSum() const { return sum; }
     uint64_t getAverage() const { return sum / count; }
-
     uint64_t getMax() const { return max; }
 
     iterator find(double percentile) {
@@ -194,6 +234,12 @@ public:
         uint64_t sum = 0;
         uint64_t total = getTotal();
         uint64_t threshold = (double)total * rev / 100.0;
+
+        if (!threshold) {
+            // No samples between the given percentile and the max number.
+            // Return max number.
+            return max;
+        }
 
         for (i=0; i<maxBins; ++i) {
             uint64_t n_entries = bins[i].load(std::memory_order_relaxed);
