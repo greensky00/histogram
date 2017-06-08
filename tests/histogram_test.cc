@@ -54,7 +54,6 @@ int random_gap_test() {
            (int)h.estimate(99),
            (int)h.estimate(99.9));
 
-    std::cout << std::endl;
     return 0;
 }
 
@@ -63,6 +62,7 @@ int main()
     TestSuite test;
 
     test.doTest("basic test", basic_test);
+    test.options.printTestMessage = true;
     test.doTest("random gap test", random_gap_test);
 
     return 0;
