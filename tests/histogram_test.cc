@@ -1,8 +1,11 @@
-#include <stdio.h>
-#include <thread>
-
-#include "test_common.h"
 #include "histogram.h"
+#include "test_common.h"
+
+#include <thread>
+#include <vector>
+
+#include <stdio.h>
+
 
 int basic_test() {
     uint64_t n = 10000;
@@ -57,13 +60,49 @@ int random_gap_test() {
     return 0;
 }
 
+int copy_test() {
+    uint64_t n = 10000;
+    Histogram h;
+
+    for (uint64_t i=0; i<n; ++i) {
+        h.add(i);
+    }
+    CHK_EQ(n, h.getTotal());
+
+    Histogram h_copy = h;
+    CHK_EQ(h.getTotal(), h_copy.getTotal());
+
+    std::vector<uint64_t> counts;
+    for (auto& itr: h) {
+        counts.push_back(itr.getCount());
+    }
+
+    size_t idx = 0;
+    for (auto& itr: h_copy) {
+        CHK_EQ(counts[idx++], itr.getCount());
+    }
+
+    Histogram h_copy2;
+    h_copy2 = h_copy;
+    idx = 0;
+    for (auto& itr: h_copy) {
+        CHK_EQ(counts[idx++], itr.getCount());
+    }
+
+    return 0;
+}
+
 int main()
 {
     TestSuite test;
 
     test.doTest("basic test", basic_test);
+
     test.options.printTestMessage = true;
     test.doTest("random gap test", random_gap_test);
+
+    test.options.printTestMessage = false;
+    test.doTest("copy test", copy_test);
 
     return 0;
 }
